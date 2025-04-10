@@ -1,0 +1,71 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: cleanup
+spec:
+  description: This task will clean up a workspace by deleting all the files.
+  workspaces:
+    - name: source
+      description: The workspace directory to clean. # Added optional description
+  steps:
+    - name: remove
+      image: alpine:3             # Use a minimal Alpine Linux image
+      env:
+        - name: WORKSPACE_SOURCE_PATH # Define env var for workspace path
+          value: $(workspaces.source.path) # Get path from the 'source' workspace
+      workingDir: $(workspaces.source.path) # Set working dir to the workspace path
+      securityContext:
+        runAsNonRoot: false       # Allow running as root (needed for rm -rf)
+        runAsUser: 0              # Explicitly run as root user (UID 0)
+      script: |                   # Use '|' for multi-line script
+        #!/usr/bin/env sh
+        set -eu
+
+        echo "Removing all files from ${WORKSPACE_SOURCE_PATH} ..."
+
+        # Delete any existing contents of the directory if it exists.
+        #
+        # We don't just "rm -rf ${WORKSPACE_SOURCE_PATH}" because ${WORKSPACE_SOURCE_PATH} might be "/"
+        # or the root of a mounted volume.
+        if [ -d "${WORKSPACE_SOURCE_PATH}" ] ; then
+          # Delete non-hidden files and directories
+          rm -rf "${WORKSPACE_SOURCE_PATH:?}"/*
+          # Delete files and directories starting with . but excluding ..
+          rm -rf "${WORKSPACE_SOURCE_PATH}"/.[!.]*
+          # Delete files and directories starting with .. plus any other character
+          rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
+        fi
+
+--- # Separator indicating a new YAML document begins here
+
+# Second Task: nose (newly added)
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: nose
+spec:
+  description: This task installs dependencies and runs nose tests. # Added optional description
+  workspaces:
+    - name: source
+      description: Workspace containing the source code and requirements.txt
+  params:
+    - name: args               # Parameter name
+      description: Arguments to pass to nose # Description of the parameter
+      type: string             # Data type is string
+      default: "-v"            # Default value if not provided
+  steps:
+    - name: nosetests          # Name of the step
+      image: python:3.9-slim   # Use the specified Python image
+      workingDir: $(workspaces.source.path) # Run in the source workspace directory
+      script: |                # Multi-line script follows
+        #!/bin/bash
+        set -e # Exit script immediately if any command fails
+
+        # Install/upgrade pip and wheel
+        python -m pip install --upgrade pip wheel
+
+        # Install dependencies from requirements.txt found in the workspace
+        pip install -r requirements.txt
+
+        # Run nosetests using the provided arguments (defaults to -v)
+        nosetests $(params.args)
