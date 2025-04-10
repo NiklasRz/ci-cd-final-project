@@ -1,0 +1,35 @@
+name: CI workflow
+
+on:
+  push:
+    branches: [ main ] # Trigger on push events to the main branch
+  pull_request:
+    branches: [ main ] # Trigger on pull request events targeting the main branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest       # Use the latest Ubuntu runner environment
+    container: python:3.9-slim # Run the job inside a Python 3.9 Docker container
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout
+        uses: actions/checkout@v3 # Use the standard checkout action (version 3)
+
+      # Step 2: Install Python dependencies
+      # Note: Ensure flake8, nose, nose-spec, coverage are listed
+      # in your requirements.txt file or install them explicitly here.
+      - name: Install dependencies
+        run: |                    # Execute the following shell commands
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Step 3: Lint code with flake8
+      - name: Lint with flake8
+        run: |                    # Execute the flake8 linting commands
+          flake8 service --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 service --count --max-complexity=10 --max-line-length=127 --statistics
+
+      # Step 4: Run unit tests with nose
+      - name: Run unit tests with nose
+        run: nosetests -v --with-spec --spec-color --with-coverage --cover-package=app # Execute the nose test command
